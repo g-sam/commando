@@ -1,10 +1,15 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 from collections import OrderedDict, defaultdict
 import json
 import os
 import socket
 import string
 import sys
+import pprint
+
+BASIC_KEYS_LOCATION = "talon_community.misc"
+
+pp = pprint.PrettyPrinter(indent=4)
 
 py3 = sys.version_info[0] >= 3
 if not py3:
@@ -48,8 +53,8 @@ def repl_run(lines):
 FETCH_SCRIPT = r'''from collections import defaultdict
 import json
 try:
-    from user import std
-    alnum = std.alpha_alt
+    from user.%s import basic_keys
+    alnum = basic_keys.alpha_alt
 except Exception:
     alnum = []
 
@@ -59,6 +64,7 @@ response['alnum'] = alnum
 for name, ctx in voice.talon.subs.items():
     d = response['contexts'][ctx.name] = {
         'active': ctx in voice.talon.active,
+        'activated': ctx in voice.talon.activated,
         'commands': [],
     }
     commands = d['commands']
@@ -97,7 +103,7 @@ for name, ctx in voice.talon.subs.items():
         commands.append((trigger, pretty))
 
 print(json.dumps(response))
-'''
+''' % BASIC_KEYS_LOCATION
 
 def get_grammar():
     response = '\n'.join(repl_run(FETCH_SCRIPT))
@@ -126,7 +132,15 @@ def slash():
         ctx['commands'] = [fixup(trigger, cmd)
                            for trigger, cmd in ctx['commands']]
     alpha = zip(grammar['alnum'], string.lowercase)
-    return render_template('index.html', contexts=grammar['contexts'], alpha=alpha)
+
+    filter = request.args.get('filter')
+
+    if filter == 'activated_contexts':
+        contexts = {name: ctx for name, ctx in grammar['contexts'].items() if ctx['activated']}
+    else:
+        contexts = grammar['contexts']
+
+    return render_template('index.html', contexts=contexts, alpha=alpha)
 
 if __name__ == '__main__':
     app.run(port=6001, debug=True)
